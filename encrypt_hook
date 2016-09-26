@@ -4,6 +4,7 @@ run_hook() {
     modprobe -a -q dm-crypt >/dev/null 2>&1
     [ "${quiet}" = "y" ] && CSQUIET=">/dev/null"
 
+    cpassfile="/crypto_passfile.bin"
     count=0
     while true
     do
@@ -68,6 +69,14 @@ EOF
             echo "Use 'cryptdevice=${root}:root root=/dev/mapper/root' instead."
         }
 
+        query_password() {
+            echo ""
+            echo "A password is required to access the ${cryptname} volume:"
+            read -rsp "Enter passphrase for ${resolved}: " password
+            echo -n "${password}" > ${cpassfile}
+            echo ""
+        }
+
         for cryptopt in ${cryptoptions//,/ }; do
             case ${cryptopt} in
                 allow-discards)
@@ -93,12 +102,14 @@ EOF
                 fi
                 # Ask for a passphrase
                 if [ ${dopassphrase} -gt 0 ]; then
-                    echo ""
-                    echo "A password is required to access the ${cryptname} volume:"
+
+                    if [ ! -f ${cpassfile} ]; then
+                        query_password
+                    fi
 
                     #loop until we get a real password
-                    while ! eval cryptsetup open --type luks ${resolved} ${cryptname} ${cryptargs} ${CSQUIET}; do
-                        sleep 2;
+                    while ! eval cryptsetup --key-file ${cpassfile} open --type luks ${resolved} ${cryptname} ${cryptargs} ${CSQUIET}; do
+                        query_password
                     done
                 fi
                 if [ -e "/dev/mapper/${cryptname}" ]; then
@@ -155,6 +166,7 @@ EOF
         rm -f ${ckeyfile}
         count=$((count + 1))
     done
+    rm -f ${cpassfile}
 }
 
 # vim: set ft=sh ts=4 sw=4 et:
